@@ -99,22 +99,54 @@ async def test_full_analysis_missing_resume(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_full_analysis_github_service_timeout(client: AsyncClient):
+async def test_full_analysis_github_service_timeout_falls_back_to_mock(client: AsyncClient):
     user_id = await _create_user(client)
     from app.core.exceptions import ServiceTimeoutError
 
     with patch(
         "app.services.orchestration_service.GitHubAgentClient", autospec=True
     ) as MockClass, patch(
+        "app.services.orchestration_service.ResumeJudgeClient", autospec=True
+    ) as ResumeMock, patch(
+        "app.services.orchestration_service.ProjectRecommenderClient", autospec=True
+    ) as ProjectMock, patch(
+        "app.services.orchestration_service.RoadmapGeneratorClient", autospec=True
+    ) as RoadmapMock, patch(
         "app.services.orchestration_service.ResumeService._save_file_static",
         new_callable=AsyncMock,
         return_value="/tmp/test.pdf",
     ), patch(
         "app.services.orchestration_service.ResumeService._extract_text",
-        return_value="",
+        return_value="Python developer resume",
     ):
         instance = MockClass.return_value.__aenter__.return_value
         instance.analyze = AsyncMock(side_effect=ServiceTimeoutError("Timed out"))
+
+        resume_instance = ResumeMock.return_value.__aenter__.return_value
+        resume_instance.analyze_resume = AsyncMock(return_value={
+            "claimed_skills": [{"name": "Python", "context": "Python", "confidence": 0.9}],
+            "feedback": [],
+            "overall_score": 80,
+        })
+        resume_instance.analyze_skills = AsyncMock(return_value={
+            "verified_skills": [{"name": "Python", "confidence": 0.9, "evidence": ["Python"]}],
+            "partial_skills": [],
+            "missing_skills": [{"name": "Docker", "confidence": None, "evidence": []}],
+            "unsupported_claims": [],
+        })
+
+        project_instance = ProjectMock.return_value.__aenter__.return_value
+        project_instance.recommend = AsyncMock(return_value={
+            "recommendations": [{"title": "Build API", "description": "desc", "skills": ["Python"], "difficulty": "easy", "reason": "x"}]
+        })
+
+        roadmap_instance = RoadmapMock.return_value.__aenter__.return_value
+        roadmap_instance.generate = AsyncMock(return_value={
+            "career_goal": "Backend Developer",
+            "total_weeks": 4,
+            "summary": "Plan",
+            "roadmap": [{"week": 1, "topic": "Python", "description": "Learn", "resources": [], "milestone": "done", "skills_covered": ["Python"]}],
+        })
 
         resp = await client.post(
             "/api/v1/analysis",
@@ -126,7 +158,10 @@ async def test_full_analysis_github_service_timeout(client: AsyncClient):
             },
             files={"resume_file": ("resume.pdf", _pdf_bytes(), "application/pdf")},
         )
-    assert resp.status_code == 504
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "COMPLETED"
+    assert "candidate" in resp.json()
 
 
 # ── Status retrieval ──────────────────────────────────────────────────────────

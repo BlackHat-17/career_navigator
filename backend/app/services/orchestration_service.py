@@ -30,7 +30,12 @@ from app.clients.project_recommender_client import ProjectRecommenderClient
 from app.clients.resume_judge_client import ResumeJudgeClient
 from app.clients.roadmap_generator_client import RoadmapGeneratorClient
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import (
+    NotFoundError,
+    ServiceResponseError,
+    ServiceTimeoutError,
+    ServiceUnavailableError,
+)
 from app.core.logging import get_logger
 from app.models.analysis import Analysis, AnalysisStatus
 from app.models.evidence import Evidence
@@ -246,8 +251,16 @@ class OrchestrationService:
     async def _run_github_agent(
         self, analysis: Analysis, github_username: str
     ) -> Dict[str, Any]:
-        async with GitHubAgentClient() as client:
-            raw = await client.analyze(github_username=github_username)
+        try:
+            async with GitHubAgentClient() as client:
+                raw = await client.analyze(github_username=github_username)
+        except (ServiceUnavailableError, ServiceTimeoutError, ServiceResponseError) as exc:
+            logger.warning(
+                "GitHub Agent unavailable for %s; falling back to mock data: %s",
+                github_username,
+                exc,
+            )
+            raw = self._mock_github_data(github_username)
 
         analysis.github_agent_output = raw
 
