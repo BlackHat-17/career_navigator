@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     
     MOCK_MODE: bool = False
 
+    # ── GitHub Evidence Matching (real-time, no external agent) ────────────
+    GITHUB_TOKEN: str = ""
+    GITHUB_MAX_REPOS: int = 15
+
     @property
     def gemini_models_priority(self) -> List[str]:
         """Returns list of models to try in order: primary + fallbacks"""
