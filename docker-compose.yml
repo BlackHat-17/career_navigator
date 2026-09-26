@@ -1,0 +1,76 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Career Navigator – Docker Compose
+#
+# Starts:
+#   postgres  – PostgreSQL 16
+#   backend   – FastAPI application (port 8000)
+#
+# The four AI modules (GitHub Agent, Resume Judge, Project Recommender,
+# Roadmap Generator) are run independently by teammates and are NOT
+# containerised here. Configure their URLs via environment variables.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: career_navigator_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: career_navigator
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d career_navigator"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── FastAPI backend ─────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: career_navigator_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/career_navigator
+
+      # Gemini (set your key in .env or override here — get one at aistudio.google.com)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+
+      # AI module service URLs – teammates run these independently
+      GITHUB_AGENT_URL:          ${GITHUB_AGENT_URL:-http://host.docker.internal:8001}
+      RESUME_JUDGE_URL:          ${RESUME_JUDGE_URL:-http://host.docker.internal:8002}
+      PROJECT_RECOMMENDER_URL:   ${PROJECT_RECOMMENDER_URL:-http://host.docker.internal:8003}
+      ROADMAP_GENERATOR_URL:     ${ROADMAP_GENERATOR_URL:-http://host.docker.internal:8004}
+
+      # App
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SECRET_KEY:  ${SECRET_KEY:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+
+      # Set to "true" to skip Gemini calls and return demo data
+      MOCK_MODE: ${MOCK_MODE:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads:/tmp/career_navigator_uploads
+    extra_hosts:
+      # Allows the container to reach services on the host machine
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:
+  uploads:

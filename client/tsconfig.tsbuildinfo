@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/components/pagetransition.tsx","./src/context/authcontext.tsx","./src/lib/supabase.ts","./src/pages/authcallbackpage.tsx","./src/pages/processingpage.tsx","./src/pages/resultspage.tsx","./src/pages/roadmappage.tsx","./src/pages/uploadpage.tsx"],"version":"5.9.3"}

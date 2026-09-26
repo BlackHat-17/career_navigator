@@ -1,0 +1,13 @@
+{
+  "name": "career-navigator",
+  "private": true,
+  "workspaces": ["client"],
+  "scripts": {
+    "dev": "npm run dev --workspace=client",
+    "build": "npm run build --workspace=client",
+    "install:all": "npm install && npm install --workspace=client"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

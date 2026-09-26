@@ -1,0 +1,150 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-surface text-white font-sans;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(68, 85, 240, 0.18), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(96, 121, 248, 0.10), transparent),
+      radial-gradient(ellipse 40% 30% at 20% 60%, rgba(139, 92, 246, 0.07), transparent);
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-surface; }
+  ::-webkit-scrollbar-thumb { @apply bg-surface-border rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-brand-700; }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    33%       { transform: translateY(-18px) rotate(2deg); }
+    66%       { transform: translateY(-8px) rotate(-1deg); }
+  }
+
+  @keyframes float2 {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50%       { transform: translateY(-24px) rotate(-3deg); }
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(96, 121, 248, 0.3); }
+    50%       { box-shadow: 0 0 40px rgba(96, 121, 248, 0.6), 0 0 80px rgba(96, 121, 248, 0.2); }
+  }
+
+  @keyframes scanline {
+    0%   { transform: translateY(-100%); }
+    100% { transform: translateY(400%); }
+  }
+
+  @keyframes counter-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes draw-circle {
+    from { stroke-dashoffset: 283; }
+  }
+
+  .animate-float        { animation: float  6s ease-in-out infinite; }
+  .animate-float2       { animation: float2 8s ease-in-out infinite; }
+  .animate-float-slow   { animation: float  10s ease-in-out infinite; }
+  .animate-shimmer      { animation: shimmer 3s linear infinite; background-size: 200% auto; }
+  .animate-glow-pulse   { animation: glow-pulse 2s ease-in-out infinite; }
+  .animate-scanline     { animation: scanline 2.5s linear infinite; }
+  .animate-counter-up   { animation: counter-up 0.4s ease-out both; }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-card border border-surface-border rounded-2xl;
+  }
+
+  .card-glow {
+    @apply card;
+    box-shadow: 0 0 0 1px rgba(96, 121, 248, 0.1), 0 8px 32px rgba(0,0,0,0.4);
+    transition: box-shadow 0.3s ease;
+  }
+  .card-glow:hover {
+    box-shadow: 0 0 0 1px rgba(96, 121, 248, 0.25), 0 8px 48px rgba(96, 121, 248, 0.12);
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl
+           bg-brand-500 hover:bg-brand-400 text-white font-semibold text-sm
+           transition-all duration-200 active:scale-95 disabled:opacity-40
+           disabled:pointer-events-none;
+    box-shadow: 0 0 20px rgba(96, 121, 248, 0.35), 0 4px 16px rgba(0,0,0,0.3);
+  }
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 0 32px rgba(96, 121, 248, 0.55), 0 4px 20px rgba(0,0,0,0.3);
+    transform: translateY(-1px);
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg
+           border border-surface-border hover:border-brand-600 text-sm font-medium
+           text-zinc-400 hover:text-white transition-all duration-200;
+  }
+
+  .skill-chip {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
+           border transition-all duration-200 cursor-pointer select-none;
+  }
+
+  .skill-chip-claimed {
+    @apply skill-chip bg-amber-500/10 border-amber-500/30 text-amber-300;
+  }
+  .skill-chip-claimed:hover {
+    @apply bg-amber-500/20;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+    transform: translateY(-1px) scale(1.03);
+  }
+
+  .skill-chip-evidenced {
+    @apply skill-chip bg-emerald-500/10 border-emerald-500/30 text-emerald-300;
+  }
+  .skill-chip-evidenced:hover {
+    @apply bg-emerald-500/20;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+    transform: translateY(-1px) scale(1.03);
+  }
+
+  .skill-chip-missing {
+    @apply skill-chip bg-rose-500/10 border-rose-500/30 text-rose-300;
+  }
+  .skill-chip-missing:hover {
+    @apply bg-rose-500/20;
+    box-shadow: 0 0 12px rgba(244, 63, 94, 0.3);
+    transform: translateY(-1px) scale(1.03);
+  }
+
+  .gradient-text {
+    @apply text-transparent bg-clip-text;
+    background-image: linear-gradient(135deg, #a5b4fc 0%, #6079f8 40%, #818cf8 100%);
+  }
+
+  .gradient-text-gold {
+    @apply text-transparent bg-clip-text;
+    background-image: linear-gradient(135deg, #fde68a 0%, #f59e0b 50%, #fbbf24 100%);
+  }
+
+  .orb {
+    @apply absolute rounded-full pointer-events-none;
+    filter: blur(60px);
+  }
+}
