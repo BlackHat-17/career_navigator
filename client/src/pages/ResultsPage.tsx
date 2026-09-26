@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts';
 import PageTransition from '../components/PageTransition';
+import { useProgress } from '../lib/useProgress';
 import type { AnalysisResult, SkillEntry, MissingSkill } from '../types';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -171,6 +172,7 @@ export default function ResultsPage() {
   const location   = useLocation();
   const navigate   = useNavigate();
   const rawResult = location.state?.result;
+  const progress   = useProgress(jobId ?? 'default');
 
   // Detect if we received v1 format (has analysis_id and skills object)
   let result: AnalysisResult | undefined;
@@ -467,9 +469,241 @@ export default function ResultsPage() {
           <p className="text-xs mt-4" style={{ color: '#3f3f46' }}>
             {result.roadmap.length} quests · up to {result.roadmap.reduce((s, i) => s + (XP_MAP[i.priority] ?? 0), 0)} XP · includes tutorial links
           </p>
+
+          {/* ── Skill Verification Test CTA ── */}
+          <div className="mt-6 flex justify-center">
+            <motion.button
+              onClick={() => navigate('/skill-test', {
+                state: {
+                  claimed_skills: result!.evidenced.map((s: any) => s.skill),
+                  partial_skills: result!.claimed.map((s: any) => s.skill),
+                  missing_skills: result!.missing.map((s: any) => s.skill),
+                  target_role: rawResult?.target_role || 'Software Engineer',
+                  job_id: jobId,
+                }
+              })}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="inline-flex items-center gap-3 px-7 py-3.5 rounded-2xl font-bold text-white"
+              style={{
+                background: 'linear-gradient(135deg, #1e3a5f, #1d4ed8)',
+                boxShadow: '0 0 24px rgba(29,78,216,0.4), 0 4px 16px rgba(0,0,0,0.4)',
+                border: '1px solid rgba(59,130,246,0.4)',
+              }}>
+              <span className="text-xl">🎯</span>
+              Verify Skills with a Test
+              <span className="text-xs font-normal opacity-70">→</span>
+            </motion.button>
+          </div>
         </motion.div>
+
+        {/* ── Skill Gap Learning Tracker ── */}
+        <SkillGapTracker result={result} progress={progress} />
 
       </div>
     </PageTransition>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Skill Gap Learning Tracker
+// ═══════════════════════════════════════════════════════════════════════════
+
+const LEVEL_LABELS = ['Not started', 'Aware', 'Learning', 'Practising', 'Confident', 'Mastered'];
+const LEVEL_COLORS = ['#3f3f46', '#6366f1', '#f59e0b', '#f97316', '#22c55e', '#10b981'];
+
+function SkillGapTracker({
+  result,
+  progress,
+}: {
+  result: AnalysisResult;
+  progress: ReturnType<typeof import('../lib/useProgress').useProgress>;
+}) {
+  const [activeTab, setActiveTab] = useState<'gaps' | 'all'>('gaps');
+
+  // skills to show
+  const gapSkills   = result.missing.map(s => ({ name: s.skill, tag: 'gap' as const, why: s.why }));
+  const partialSkills = result.claimed.map(s => ({ name: s.skill, tag: 'partial' as const, why: s.evidence }));
+  const strongSkills = result.evidenced.map(s => ({ name: s.skill, tag: 'strong' as const, why: s.evidence }));
+
+  const displayed = activeTab === 'gaps'
+    ? [...gapSkills, ...partialSkills]
+    : [...gapSkills, ...partialSkills, ...strongSkills];
+
+  const overallPct = progress.overallLearningPct(displayed.map(s => s.name));
+
+  const TAG_STYLE = {
+    gap:     { label: 'Gap',     bg: 'rgba(239,68,68,.12)',    border: 'rgba(239,68,68,.3)',    color: '#f87171' },
+    partial: { label: 'Partial', bg: 'rgba(245,158,11,.12)',   border: 'rgba(245,158,11,.3)',   color: '#fbbf24' },
+    strong:  { label: 'Strong',  bg: 'rgba(16,185,129,.12)',   border: 'rgba(16,185,129,.3)',   color: '#34d399' },
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 28 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.7, type: 'spring', stiffness: 90, damping: 16 }}
+      className="rounded-3xl overflow-hidden"
+      style={{
+        background: 'rgba(22,27,39,0.85)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        boxShadow: '0 0 0 1px rgba(96,121,248,0.08), 0 16px 48px rgba(0,0,0,0.4)',
+      }}
+    >
+      {/* Header */}
+      <div className="px-6 pt-6 pb-4 border-b border-white/5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-lg font-black text-white flex items-center gap-2">
+              <span>📊</span> Skill Learning Tracker
+            </h2>
+            <p className="text-xs mt-1" style={{ color: '#52525b' }}>
+              Track your self-reported learning progress for each skill gap
+            </p>
+          </div>
+
+          {/* Overall progress pill */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="text-right">
+              <div className="text-2xl font-black" style={{ color: overallPct >= 70 ? '#34d399' : overallPct >= 40 ? '#fbbf24' : '#818cf8' }}>
+                {overallPct}%
+              </div>
+              <div className="text-[10px]" style={{ color: '#52525b' }}>overall progress</div>
+            </div>
+            <div className="relative w-12 h-12">
+              <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
+                <circle cx="24" cy="24" r="19" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="4" />
+                <motion.circle cx="24" cy="24" r="19" fill="none"
+                  stroke={overallPct >= 70 ? '#34d399' : overallPct >= 40 ? '#fbbf24' : '#818cf8'}
+                  strokeWidth="4" strokeLinecap="round"
+                  strokeDasharray={119.4}
+                  animate={{ strokeDashoffset: 119.4 * (1 - overallPct / 100) }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* Tab row */}
+        <div className="flex gap-2 mt-4">
+          {(['gaps', 'all'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+              style={{
+                background: activeTab === tab ? 'rgba(99,102,241,.2)' : 'rgba(255,255,255,.04)',
+                border: `1px solid ${activeTab === tab ? 'rgba(99,102,241,.4)' : 'rgba(255,255,255,.06)'}`,
+                color: activeTab === tab ? '#a5b4fc' : '#52525b',
+              }}
+            >
+              {tab === 'gaps' ? `⚠️ Gaps & Partial (${gapSkills.length + partialSkills.length})` : `🔍 All Skills (${displayed.length + strongSkills.length})`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Skill rows */}
+      <div className="p-6 space-y-5">
+        {displayed.map((skill, i) => {
+          const pct   = progress.getSkillProgress(skill.name);
+          const level = Math.round((pct / 100) * 5);
+          const tagStyle = TAG_STYLE[skill.tag];
+
+          return (
+            <motion.div key={skill.name}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.04 }}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                {/* Skill name + tag */}
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-sm font-bold text-white truncate">{skill.name}</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                    style={{ background: tagStyle.bg, border: `1px solid ${tagStyle.border}`, color: tagStyle.color }}>
+                    {tagStyle.label}
+                  </span>
+                </div>
+
+                {/* Level label */}
+                <span className="text-xs font-bold shrink-0" style={{ color: LEVEL_COLORS[level] }}>
+                  {LEVEL_LABELS[level]}
+                </span>
+
+                {/* Percentage */}
+                <span className="text-xs font-black w-9 text-right shrink-0" style={{ color: LEVEL_COLORS[level] }}>
+                  {pct}%
+                </span>
+              </div>
+
+              {/* Slider */}
+              <div className="relative">
+                {/* Track */}
+                <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <motion.div className="h-full rounded-full"
+                    animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.4, ease: 'easeOut' }}
+                    style={{
+                      background: `linear-gradient(90deg, ${LEVEL_COLORS[Math.max(0, level - 1)]}, ${LEVEL_COLORS[level]})`,
+                      boxShadow: `0 0 8px ${LEVEL_COLORS[level]}66`,
+                    }}
+                  />
+                </div>
+                {/* Native range input overlaid */}
+                <input
+                  type="range" min={0} max={100} step={5}
+                  value={pct}
+                  onChange={e => progress.setSkillProgress(skill.name, Number(e.target.value))}
+                  className="absolute inset-0 w-full opacity-0 cursor-pointer h-2"
+                  style={{ height: '8px' }}
+                />
+              </div>
+
+              {/* Level dots */}
+              <div className="flex justify-between mt-1.5">
+                {LEVEL_LABELS.map((lbl, li) => (
+                  <button
+                    key={lbl}
+                    onClick={() => progress.setSkillProgress(skill.name, Math.round((li / 5) * 100))}
+                    title={lbl}
+                    className="flex flex-col items-center gap-0.5 group"
+                  >
+                    <div className="w-2 h-2 rounded-full transition-all"
+                      style={{
+                        background: li <= level ? LEVEL_COLORS[level] : 'rgba(255,255,255,0.08)',
+                        boxShadow: li === level ? `0 0 6px ${LEVEL_COLORS[level]}` : 'none',
+                        transform: li === level ? 'scale(1.3)' : 'scale(1)',
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+              {/* Why this is a gap */}
+              {pct === 0 && (
+                <p className="text-[11px] mt-1.5 leading-relaxed" style={{ color: '#3f3f46' }}>
+                  {skill.why.length > 80 ? skill.why.slice(0, 80) + '…' : skill.why}
+                </p>
+              )}
+            </motion.div>
+          );
+        })}
+
+        {displayed.length === 0 && (
+          <p className="text-center text-sm py-8" style={{ color: '#3f3f46' }}>
+            🎉 No skill gaps found — you're well-matched for this role!
+          </p>
+        )}
+      </div>
+
+      {/* Footer hint */}
+      <div className="px-6 pb-5 pt-0">
+        <p className="text-[11px] text-center" style={{ color: '#3f3f46' }}>
+          Progress is saved locally in your browser · Drag sliders or click level dots to update
+        </p>
+      </div>
+    </motion.div>
   );
 }
