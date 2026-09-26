@@ -1,127 +1,221 @@
 """
 RoadmapService
 ──────────────
-Delegates to RoadmapGeneratorClient and persists the results.
+Handles skill classification and roadmap generation.
+
+Input:
+    missing_skills
+    partial_skills
+
+Flow:
+
+    Missing Skill
+        ↓
+    Learning Track
+        ↓
+    Mini Project
+        ↓
+    AI Assessment
+
+    Partial Skill
+        ↓
+    Direct Mini Project
+        ↓
+    AI Assessment
 """
+
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.roadmap_generator_client import RoadmapGeneratorClient
 from app.core.exceptions import NotFoundError
 from app.core.logging import get_logger
-from app.models.analysis import Analysis, AnalysisStatus
-from app.models.roadmap import Roadmap, RoadmapStep
-from app.models.user import User
-from app.schemas.roadmap import RoadmapGenerateRequest, RoadmapRead, RoadmapStepRead
+from app.models.roadmap import (
+    Roadmap,
+    RoadmapSkillClassification,
+    RoadmapSkillRecord,
+    RoadmapSkillState,
+)
+from app.schemas.roadmap import (
+    LearningLevel,
+    RoadmapGenerateRequest,
+    RoadmapRead,
+    RoadmapSkill,
+    SkillClassification,
+    SkillState,
+)
 
 logger = get_logger(__name__)
 
 
 class RoadmapService:
+
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def generate(self, request: RoadmapGenerateRequest) -> RoadmapRead:
-        # 1. Validate user
-        user = await self._db.get(User, request.user_id)
-        if not user:
-            raise NotFoundError(f"User {request.user_id} not found.")
+    @staticmethod
+    def _apply_skill_state(skill: RoadmapSkill) -> None:
+        """Set the roadmap state to the first valid milestone for each flow."""
+        if skill.assessment is not None:
+            if skill.assessment.passed is True:
+                skill.state = SkillState.VERIFIED
+            elif skill.assessment.passed is False:
+                skill.state = SkillState.RETAKE_AVAILABLE
+            else:
+                skill.state = SkillState.ASSESSMENT_AVAILABLE
+            return
 
-        # 2. Create analysis record
-        analysis = Analysis(
-            user_id=request.user_id,
-            target_role=request.career_goal,
-            status=AnalysisStatus.PROCESSING,
-        )
-        self._db.add(analysis)
-        await self._db.flush()
-        logger.info("Roadmap generation started analysis_id=%s", analysis.id)
+        if skill.classification == SkillClassification.MISSING:
+            if skill.learning_track:
+                skill.state = SkillState.LEARNING
+                for level in skill.learning_track:
+                    if level.completion_status in {"locked", "not_started"}:
+                        level.completion_status = "available"
+                        break
+            elif skill.mini_project:
+                skill.state = SkillState.MINI_PROJECT_AVAILABLE
+            else:
+                skill.state = SkillState.UNLOCKED
+        else:
+            if skill.mini_project:
+                skill.state = SkillState.MINI_PROJECT_AVAILABLE
+            else:
+                skill.state = SkillState.UNLOCKED
 
-        # 3. Call the Roadmap Generator
-        try:
-            async with RoadmapGeneratorClient() as client:
-                raw = await client.generate(
-                    career_goal=request.career_goal,
-                    current_skills=request.current_skills,
-                    skill_gaps=request.skill_gaps,
-                    recommended_projects=request.recommended_projects,
+    @staticmethod
+    def _skill_to_schema(record: RoadmapSkillRecord) -> RoadmapSkill:
+        learning_levels: list[LearningLevel] | None = None
+        if record.learning_track:
+            learning_levels = [
+                LearningLevel(
+                    level_number=level.get("level_number", 1),
+                    title=level.get("title", ""),
+                    objective=level.get("objective", ""),
+                    resources=level.get("resources", []),
+                    practice=level.get("practice"),
+                    completion_status=level.get("completion_status", "locked"),
                 )
-        except Exception as exc:
-            analysis.status = AnalysisStatus.FAILED
-            analysis.error_message = str(exc)
-            await self._db.flush()
-            raise
+                for level in record.learning_track
+            ]
 
-        # 4. Persist raw output
-        analysis.roadmap_generator_output = raw
-        analysis.status = AnalysisStatus.COMPLETED
-
-        # 5. Persist normalised roadmap
-        roadmap = Roadmap(
-            analysis_id=analysis.id,
-            career_goal=request.career_goal,
-            summary=raw.get("summary"),
-            total_weeks=raw.get("total_weeks"),
-        )
-        self._db.add(roadmap)
-        await self._db.flush()
-
-        for step_data in raw.get("roadmap", []):
-            step = RoadmapStep(
-                roadmap_id=roadmap.id,
-                week=step_data.get("week", 0),
-                topic=step_data.get("topic", ""),
-                description=step_data.get("description"),
-                resources=step_data.get("resources", []),
-                milestone=step_data.get("milestone"),
-                skills_covered=step_data.get("skills_covered", []),
-            )
-            self._db.add(step)
-
-        await self._db.flush()
-        logger.info("Roadmap generation completed roadmap_id=%s", roadmap.id)
-
-        steps = [RoadmapStepRead(**s) for s in raw.get("roadmap", [])]
-        return RoadmapRead(
-            roadmap_id=roadmap.id,
-            career_goal=request.career_goal,
-            total_weeks=raw.get("total_weeks"),
-            summary=raw.get("summary"),
-            roadmap=steps,
-            raw=raw,
+        return RoadmapSkill(
+            name=record.name,
+            classification=SkillClassification(record.classification.value),
+            state=SkillState(record.state.value),
+            learning_track=learning_levels,
+            mini_project=record.mini_project,
+            assessment=record.assessment,
         )
 
-    async def get_by_analysis(self, analysis_id: UUID) -> RoadmapRead:
-        from sqlalchemy import select
-        from sqlalchemy.orm import selectinload
-
+    async def get_by_identifier(self, identifier: UUID) -> RoadmapRead:
         result = await self._db.execute(
-            select(Roadmap)
-            .where(Roadmap.analysis_id == analysis_id)
-            .options(selectinload(Roadmap.steps))
+            select(Roadmap).where(
+                (Roadmap.id == identifier) | (Roadmap.analysis_id == identifier)
+            )
         )
         roadmap = result.scalar_one_or_none()
         if not roadmap:
-            raise NotFoundError(f"No roadmap found for analysis {analysis_id}.")
+            raise NotFoundError(f"Roadmap {identifier} not found.")
 
-        steps = [
-            RoadmapStepRead(
-                week=s.week,
-                topic=s.topic,
-                description=s.description,
-                resources=s.resources or [],
-                milestone=s.milestone,
-                skills_covered=s.skills_covered or [],
-            )
-            for s in roadmap.steps
-        ]
         return RoadmapRead(
             roadmap_id=roadmap.id,
-            career_goal=roadmap.career_goal,
-            total_weeks=roadmap.total_weeks,
-            summary=roadmap.summary,
-            roadmap=steps,
+            skills=[self._skill_to_schema(skill) for skill in roadmap.skills],
+            raw={
+                "analysis_id": str(roadmap.analysis_id) if roadmap.analysis_id else None,
+                "skill_count": len(roadmap.skills),
+            },
+        )
+
+    async def generate(
+        self,
+        request: RoadmapGenerateRequest,
+    ) -> RoadmapRead:
+
+        logger.info(
+            "Starting roadmap generation: missing=%s partial=%s",
+            request.missing_skills,
+            request.partial_skills,
+        )
+
+        roadmap = Roadmap(title="Skill roadmap", summary="Generated from classified skill gaps")
+        self._db.add(roadmap)
+        await self._db.flush()
+
+        roadmap_skills: list[RoadmapSkill] = []
+
+        for skill_name in request.missing_skills:
+            logger.info("Processing missing skill: %s", skill_name)
+            roadmap_skills.append(
+                RoadmapSkill(
+                    name=skill_name,
+                    classification=SkillClassification.MISSING,
+                    state=SkillState.UNLOCKED,
+                    learning_track=[],
+                )
+            )
+
+        for skill_name in request.partial_skills:
+            logger.info("Processing partial skill: %s", skill_name)
+            roadmap_skills.append(
+                RoadmapSkill(
+                    name=skill_name,
+                    classification=SkillClassification.PARTIAL,
+                    state=SkillState.UNLOCKED,
+                    learning_track=None,
+                )
+            )
+
+        async with RoadmapGeneratorClient() as client:
+            for skill in roadmap_skills:
+                if skill.classification == SkillClassification.MISSING:
+                    raw = await client.generate_learning_track(skill_name=skill.name)
+                    skill.learning_track = raw.get("learning_track", [])
+                    skill.mini_project = raw.get("mini_project")
+                    assessment_raw = await client.generate_assessment(
+                        skill_name=skill.name,
+                        classification="missing",
+                    )
+                    if assessment_raw.get("assessment"):
+                        skill.assessment = assessment_raw.get("assessment")
+                elif skill.classification == SkillClassification.PARTIAL:
+                    raw = await client.generate_mini_project(skill_name=skill.name)
+                    skill.learning_track = None
+                    skill.mini_project = raw.get("mini_project")
+                    assessment_raw = await client.generate_assessment(
+                        skill_name=skill.name,
+                        classification="partial",
+                    )
+                    if assessment_raw.get("assessment"):
+                        skill.assessment = assessment_raw.get("assessment")
+
+                self._apply_skill_state(skill)
+
+                roadmap.skills.append(
+                    RoadmapSkillRecord(
+                        name=skill.name,
+                        classification=RoadmapSkillClassification(skill.classification.value),
+                        state=RoadmapSkillState(skill.state.value),
+                        learning_track=[level.model_dump(mode="json") for level in skill.learning_track] if skill.learning_track is not None else None,
+                        mini_project=skill.mini_project.model_dump(mode="json") if skill.mini_project else None,
+                        assessment=skill.assessment.model_dump(mode="json") if skill.assessment else None,
+                    )
+                )
+
+        await self._db.flush()
+
+        logger.info("Roadmap generation completed roadmap_id=%s", roadmap.id)
+
+        return RoadmapRead(
+            roadmap_id=roadmap.id,
+            skills=roadmap_skills,
+            raw={
+                "missing_skills": request.missing_skills,
+                "partial_skills": request.partial_skills,
+                "skill_count": len(roadmap_skills),
+            },
         )

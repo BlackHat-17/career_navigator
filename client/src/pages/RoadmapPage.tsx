@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import PageTransition from '../components/PageTransition';
-import type { AnalysisResult, RoadmapItem } from '../types';
+import type { AnalysisResult, RoadmapItem, RoadmapSkill } from '../types';
 
 /* ── Tutorial link database ──────────────────────────────────────── */
 type TutLink = { label: string; url: string; icon: string; color: string };
@@ -281,6 +281,74 @@ function Badge({ badge, unlocked }: { badge: typeof ALL_BADGES[0]; unlocked: boo
   );
 }
 
+function SkillRoadmapCard({ skill }: { skill: RoadmapSkill }) {
+  const classificationLabel = skill.classification === 'missing' ? 'Missing skill' : 'Partial skill';
+  const stateLabel = skill.state.replace(/_/g, ' ');
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-white/10 bg-slate-900/80 p-5"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-indigo-300">{classificationLabel}</p>
+          <h3 className="mt-2 text-xl font-bold text-white">{skill.name}</h3>
+        </div>
+        <span className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-200">
+          {stateLabel}
+        </span>
+      </div>
+
+      {skill.learning_track && skill.learning_track.length > 0 && (
+        <div className="mt-4 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">Learning track</p>
+          {skill.learning_track.map((level) => (
+            <div key={`${skill.name}-${level.level_number}`} className="rounded-xl border border-white/5 bg-slate-950/40 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-semibold text-white">Level {level.level_number}: {level.title}</p>
+                <span className="text-[10px] uppercase text-zinc-400">{level.completion_status}</span>
+              </div>
+              <p className="mt-2 text-sm text-zinc-300">{level.objective}</p>
+              {level.resources && level.resources.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs text-zinc-400">
+                  {level.resources.slice(0, 3).map((resource, idx) => (
+                    <li key={`${resource.title}-${idx}`}>• {resource.title}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {skill.mini_project && (
+        <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">Mini project</p>
+          <h4 className="mt-2 font-semibold text-white">{skill.mini_project.title}</h4>
+          <p className="mt-2 text-sm text-zinc-300">{skill.mini_project.description}</p>
+        </div>
+      )}
+
+      {skill.assessment && (
+        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">Assessment</p>
+          <div className="mt-2 flex items-center gap-3">
+            <span className="text-lg font-bold text-white">{skill.assessment.score ?? 0}%</span>
+            <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-amber-200">
+              {skill.assessment.passed === true ? 'Passed' : skill.assessment.passed === false ? 'Needs review' : 'Pending'}
+            </span>
+          </div>
+          {skill.assessment.feedback && (
+            <p className="mt-2 text-sm text-zinc-300">{skill.assessment.feedback}</p>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 /* ── Main ────────────────────────────────────────────────────────── */
 export default function RoadmapPage() {
   const location = useLocation();
@@ -297,6 +365,45 @@ export default function RoadmapPage() {
           <p className="text-4xl mb-4">🗺️</p>
           <p className="text-zinc-400 mb-4">No roadmap data. Run an analysis first.</p>
           <button onClick={() => navigate('/')} className="btn-primary">← Start analysis</button>
+        </div>
+      </PageTransition>
+    );
+  }
+
+  const skillRoadmap = result.skills && result.skills.length > 0 ? result.skills : null;
+
+  if (skillRoadmap) {
+    return (
+      <PageTransition className="min-h-screen px-4 py-12 overflow-hidden">
+        <div className="fixed inset-0 pointer-events-none">
+          <motion.div className="orb w-[600px] h-[600px] bg-indigo-600/20 -top-48 -left-32"
+            animate={{ scale: [1,1.2,1], rotate: [0,10,0] }} transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }} />
+          <motion.div className="orb w-[400px] h-[400px] bg-violet-600/15 bottom-0 right-0"
+            animate={{ scale: [1,1.3,1] }} transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut', delay: 3 }} />
+          <div className="absolute inset-0 opacity-[0.025]"
+            style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+        </div>
+
+        <div className="relative mx-auto max-w-4xl space-y-6 z-10">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-indigo-300">Roadmap</p>
+              <h1 className="mt-2 text-3xl font-black text-white">Skill learning path</h1>
+            </div>
+            <button onClick={() => navigate(-1)} className="btn-ghost">← Results</button>
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-6">
+            <p className="text-sm text-zinc-300">
+              This roadmap begins after upstream skill classification. Missing skills follow a learning track, while partial skills begin with a focused mini-project and assessment.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {skillRoadmap.map((skill) => (
+              <SkillRoadmapCard key={skill.name} skill={skill} />
+            ))}
+          </div>
         </div>
       </PageTransition>
     );

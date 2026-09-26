@@ -3,7 +3,13 @@ from app.models.analysis import Analysis, AnalysisStatus
 from app.models.skill import Skill, CandidateSkill, SkillLevel
 from app.models.evidence import Evidence
 from app.models.project import Project, RecommendedProject
-from app.models.roadmap import Roadmap, RoadmapStep
+from app.models.roadmap import (
+    Roadmap,
+    RoadmapSkillClassification,
+    RoadmapSkillRecord,
+    RoadmapSkillState,
+    RoadmapStep,
+)
 
 __all__ = [
     "User",
@@ -16,5 +22,8 @@ __all__ = [
     "Project",
     "RecommendedProject",
     "Roadmap",
+    "RoadmapSkillClassification",
+    "RoadmapSkillRecord",
+    "RoadmapSkillState",
     "RoadmapStep",
 ]

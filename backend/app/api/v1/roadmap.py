@@ -1,6 +1,6 @@
 """
 POST /api/v1/roadmap/generate          – forward to Roadmap Generator, persist, return result
-GET  /api/v1/roadmap/{analysis_id}     – fetch stored roadmap by analysis ID
+GET  /api/v1/roadmap/{roadmap_id}      – fetch stored roadmap by roadmap ID
 """
 from uuid import UUID
 
@@ -20,9 +20,9 @@ router = APIRouter(prefix="/roadmap", tags=["Roadmap"])
     status_code=status.HTTP_200_OK,
     summary="Generate a personalised learning roadmap",
     description=(
-        "Forwards career goal, current skills, skill gaps, and recommended "
-        "projects to the Roadmap Generator service. "
-        "The backend does not generate the roadmap itself."
+        "Creates a roadmap from the already-classified skill boundary. "
+        "The upstream analysis module provides missing_skills and partial_skills; "
+        "the roadmap module classifies and prepares the learning flow."
     ),
 )
 async def generate_roadmap(
@@ -34,13 +34,13 @@ async def generate_roadmap(
 
 
 @router.get(
-    "/{analysis_id}",
+    "/{roadmap_id}",
     response_model=RoadmapRead,
     summary="Retrieve stored roadmap for an analysis",
 )
 async def get_roadmap(
-    analysis_id: UUID,
+    roadmap_id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> RoadmapRead:
     svc = RoadmapService(db)
-    return await svc.get_by_analysis(analysis_id)
+    return await svc.get_by_identifier(roadmap_id)
