@@ -57,6 +57,19 @@ async def test_get_user_success(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_get_user_by_email_success(client: AsyncClient):
+    create = await client.post(
+        "/api/v1/users",
+        json={"name": "Dana", "email": "dana@example.com", "career_goal": "Frontend Dev"},
+    )
+    assert create.status_code == 201
+
+    resp = await client.get("/api/v1/users/by-email", params={"email": "dana@example.com"})
+    assert resp.status_code == 200
+    assert resp.json()["id"] == create.json()["id"]
+
+
+@pytest.mark.asyncio
 async def test_get_user_not_found(client: AsyncClient):
     import uuid
     resp = await client.get(f"/api/v1/users/{uuid.uuid4()}")

@@ -47,3 +47,9 @@ class UserService:
         if not user:
             raise NotFoundError(f"User {user_id} not found.")
         return user
+
+    async def get_user_by_email(self, email: str) -> User:
+        user = await self._db.scalar(select(User).where(User.email == email.lower()))
+        if not user:
+            raise NotFoundError(f"User with email '{email}' not found.")
+        return user

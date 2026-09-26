@@ -25,7 +25,7 @@ const FEATURES = [
 
 export default function UploadPage() {
   const navigate = useNavigate();
-  const { githubLogin, signInWithGitHub, signOut, loading: authLoading } = useAuth();
+  const { user, githubLogin, signInWithGitHub, signOut, loading: authLoading } = useAuth();
 
   const [file, setFile]             = useState<File | null>(null);
   const [dragging, setDragging]     = useState(false);
@@ -48,6 +48,28 @@ export default function UploadPage() {
     if (e.target.files?.[0]) setFile(e.target.files[0]);
   };
 
+  const ensureBackendUser = async (): Promise<string> => {
+    const email = user?.email ?? `${githubLogin ?? 'guest'}@local.dev`;
+    const name = user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? githubLogin ?? 'Guest User';
+
+    try {
+      const { data } = await axios.post('/api/v1/users', {
+        name,
+        email,
+        career_goal: resolvedRole,
+      });
+      return data.id;
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.status === 409) {
+        const { data } = await axios.get('/api/v1/users/by-email', {
+          params: { email },
+        });
+        return data.id;
+      }
+      throw err;
+    }
+  };
+
   const handleSubmit = async () => {
     if (!file || !resolvedRole) {
       setError('Please attach a resume and select a role.');
@@ -56,37 +78,29 @@ export default function UploadPage() {
     setError('');
     setLoading(true);
     try {
+      const userId = await ensureBackendUser();
+
       // Prepare FormData for v1 API endpoint
       const form = new FormData();
-      form.append('resume_file', file);  // v1 expects 'resume_file'
-      form.append('target_role', resolvedRole);  // v1 expects 'target_role'
-      
-      // Add optional job_description if provided
-      if (jobDescription.trim()) {
-        form.append('job_description', jobDescription);  // v1 expects 'job_description'
-      }
-      
-      // Add GitHub username if connected
-      if (githubLogin) {
-        form.append('github_username', githubLogin);  // v1 expects 'github_username'
-      }
-      
-      // Generate or get user_id from auth context
-      // For testing: use a fixed UUID that will be auto-created
-      const userId = '00000000-0000-0000-0000-000000000001';
+      form.append('resume_file', file);
+      form.append('target_role', resolvedRole);
       form.append('user_id', userId);
 
-      // Call the v1 orchestrated analysis endpoint
+      if (jobDescription.trim()) {
+        form.append('job_description', jobDescription);
+      }
+
+      if (githubLogin) {
+        form.append('github_username', githubLogin);
+      }
+
       const { data } = await axios.post<{ analysis_id: string }>('/api/v1/analysis', form, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      
-      // Wait a moment for the job to be fully initialized before navigating
+
       await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Navigate to processing page with analysis_id (v1 format)
       navigate(`/processing/${data.analysis_id}`);
     } catch (err: unknown) {
       const backendError = axios.isAxiosError(err)
