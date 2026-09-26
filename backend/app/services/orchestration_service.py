@@ -29,6 +29,7 @@ from app.clients.github_agent_client import GitHubAgentClient
 from app.clients.project_recommender_client import ProjectRecommenderClient
 from app.clients.resume_judge_client import ResumeJudgeClient
 from app.clients.roadmap_generator_client import RoadmapGeneratorClient
+from app.services.agentic_analyzer import AgenticAnalyzer
 from app.core.config import get_settings
 from app.core.exceptions import (
     NotFoundError,
@@ -178,6 +179,8 @@ class OrchestrationService:
         if settings.MOCK_MODE:
             logger.info("[pipeline] MOCK_MODE: using synthetic skill analysis")
             skill_raw = self._mock_skill_analysis(target_role)
+            # Persist mock skills to database
+            await self._persist_candidate_skills(analysis, skill_raw)
         else:
             skill_raw = await self._run_skill_analysis(
                 analysis=analysis,
@@ -301,13 +304,26 @@ class OrchestrationService:
         job_description: str,
         github_skills: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        async with ResumeJudgeClient() as client:
-            raw = await client.analyze_resume(
-                target_role=target_role,
+        # Try Agentic AI first (direct Gemini)
+        try:
+            analyzer = AgenticAnalyzer()
+            raw = await analyzer.analyze_resume(
                 resume_text=resume_text,
+                target_role=target_role,
                 job_description=job_description,
-                github_skills=github_skills,
             )
+            logger.info("[AgenticAI] Resume analysis successful")
+        except Exception as e:
+            logger.warning(f"[AgenticAI] Failed, falling back to microservice: {e}")
+            # Fallback to microservice
+            async with ResumeJudgeClient() as client:
+                raw = await client.analyze_resume(
+                    target_role=target_role,
+                    resume_text=resume_text,
+                    job_description=job_description,
+                    github_skills=github_skills,
+                )
+        
         analysis.resume_judge_output = raw
 
         for claim in raw.get("claimed_skills", []):
@@ -328,11 +344,24 @@ class OrchestrationService:
         target_role: str,
         job_description: str,
     ) -> Dict[str, Any]:
-        async with ResumeJudgeClient() as client:
-            raw = await client.analyze_skills(
-                github_output=github_raw,
-                resume_output=resume_raw,
-                job_title=target_role,
+        # Try Agentic AI first (direct Gemini)
+        try:
+            analyzer = AgenticAnalyzer()
+            raw = await analyzer.cross_reference_skills(
+                github_data=github_raw,
+                resume_data=resume_raw,
+                target_role=target_role,
+                job_description=job_description,
+            )
+            logger.info("[AgenticAI] Skill analysis successful")
+        except Exception as e:
+            logger.warning(f"[AgenticAI] Failed, falling back to microservice: {e}")
+            # Fallback to microservice
+            async with ResumeJudgeClient() as client:
+                raw = await client.analyze_skills(
+                    github_output=github_raw,
+                    resume_output=resume_raw,
+                    job_title=target_role,
                 job_description=job_description,
             )
 
@@ -347,12 +376,25 @@ class OrchestrationService:
         verified_skills: List[str],
         skill_gaps: List[str],
     ) -> Dict[str, Any]:
-        async with ProjectRecommenderClient() as client:
-            raw = await client.recommend(
+        # Try Agentic AI first (direct Gemini)
+        try:
+            analyzer = AgenticAnalyzer()
+            raw = await analyzer.recommend_projects(
                 career_goal=career_goal,
                 verified_skills=verified_skills,
                 skill_gaps=skill_gaps,
             )
+            logger.info("[AgenticAI] Project recommendations successful")
+        except Exception as e:
+            logger.warning(f"[AgenticAI] Failed, falling back to microservice: {e}")
+            # Fallback to microservice
+            async with ProjectRecommenderClient() as client:
+                raw = await client.recommend(
+                    career_goal=career_goal,
+                    verified_skills=verified_skills,
+                    skill_gaps=skill_gaps,
+                )
+        
         analysis.project_recommender_output = raw
 
         for rec in raw.get("recommendations", []):
@@ -375,13 +417,27 @@ class OrchestrationService:
         skill_gaps: List[str],
         recommended_projects: List[str],
     ) -> Dict[str, Any]:
-        async with RoadmapGeneratorClient() as client:
-            raw = await client.generate(
+        # Try Agentic AI first (direct Gemini)
+        try:
+            analyzer = AgenticAnalyzer()
+            raw = await analyzer.generate_roadmap(
                 career_goal=career_goal,
                 current_skills=current_skills,
                 skill_gaps=skill_gaps,
                 recommended_projects=recommended_projects,
             )
+            logger.info("[AgenticAI] Roadmap generation successful")
+        except Exception as e:
+            logger.warning(f"[AgenticAI] Failed, falling back to microservice: {e}")
+            # Fallback to microservice
+            async with RoadmapGeneratorClient() as client:
+                raw = await client.generate(
+                    career_goal=career_goal,
+                    current_skills=current_skills,
+                    skill_gaps=skill_gaps,
+                    recommended_projects=recommended_projects,
+                )
+        
         analysis.roadmap_generator_output = raw
 
         roadmap = Roadmap(

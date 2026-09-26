@@ -165,10 +165,22 @@ class ResumeService:
                 f"File exceeds maximum size of {settings.MAX_UPLOAD_SIZE_MB} MB."
             )
         upload_dir = Path(settings.UPLOAD_DIR)
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        dest = upload_dir / filename
-        dest.write_bytes(content)
-        return str(dest)
+        
+        try:
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            dest = upload_dir / filename
+            dest.write_bytes(content)
+            logger.info(f"Saved resume to {dest}")
+            return str(dest)
+        except PermissionError as e:
+            # Fallback to /app/uploads in case /tmp is not writable
+            logger.warning(f"Permission denied for {upload_dir}, using fallback: {e}")
+            fallback_dir = Path("/app/uploads")
+            fallback_dir.mkdir(parents=True, exist_ok=True)
+            dest = fallback_dir / filename
+            dest.write_bytes(content)
+            logger.info(f"Saved resume to fallback location {dest}")
+            return str(dest)
 
     @staticmethod
     def _safe_filename(original: str) -> str:

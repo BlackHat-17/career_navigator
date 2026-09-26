@@ -23,11 +23,14 @@ COPY --from=builder /install /usr/local
 # Copy application source
 COPY . .
 
-# Create upload directory
-RUN mkdir -p /tmp/career_navigator_uploads
-
 # Non-root user for safety
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
+# Create upload directories with correct permissions
+RUN mkdir -p /tmp/career_navigator_uploads /app/uploads && \
+    chown -R appuser:appgroup /tmp/career_navigator_uploads /app/uploads && \
+    chmod -R 755 /tmp/career_navigator_uploads /app/uploads
+
 USER appuser
 
 EXPOSE 8000
