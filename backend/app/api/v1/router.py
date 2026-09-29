@@ -5,6 +5,7 @@ Imported by app/main.py.
 from fastapi import APIRouter
 
 from app.api.v1 import analysis, github, jobs, projects, resume, roadmap, users
+from app.api.v1.skill_test import router as skill_test_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -15,3 +16,4 @@ api_router.include_router(jobs.router)
 api_router.include_router(analysis.router)
 api_router.include_router(projects.router)
 api_router.include_router(roadmap.router)
+api_router.include_router(skill_test_router)
